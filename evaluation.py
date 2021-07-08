@@ -8,14 +8,12 @@
  @Function: Evaluation
  
 """
-import os
-import numpy as np
 from PIL import Image
 from collections import OrderedDict
 from misc import *
 from config import ecssd_path, hkuis_path, hkuis_test_path, pascals_path, sod_path, dutste_path, dutomron_path
 
-results_path = './results'
+results_path = './results/DCENet'
 
 to_test = OrderedDict([
     ('SOD', sod_path),
@@ -63,4 +61,3 @@ for name, root in to_test.items():
 print(results_path)
 for key in results:
     print("{:12} {}".format(key, results[key]))
-

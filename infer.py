@@ -79,7 +79,7 @@ def main():
             time_list = []
             img_list = [os.path.splitext(f)[0] for f in os.listdir(image_path) if f.endswith('g')]
             for idx, img_name in enumerate(img_list):
-                if name == 'HKU-IS' or name == 'HKU-IS-TEST':
+                if name == 'HKU-IS':
                     img = Image.open(os.path.join(image_path, img_name + '.png')).convert('RGB')
                 else:
                     img = Image.open(os.path.join(image_path, img_name + '.jpg')).convert('RGB')

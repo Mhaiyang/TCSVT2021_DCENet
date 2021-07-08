@@ -12,7 +12,7 @@ import os
 
 backbone_path = './backbone/resnet/resnet50-19c8e357.pth'
 
-datasets_root = './data'
+datasets_root = '/media/iccd/disk1/saliency_benchmark'
 
 sod_training_root = os.path.join(datasets_root, 'DUTS-TR')
 msra10k_path = os.path.join(datasets_root, 'MSRA10K')
