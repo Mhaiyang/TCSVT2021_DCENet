@@ -14,13 +14,12 @@ import torch.nn.functional as F
 
 import backbone.resnet.resnet as resnet
 
-
 ###################################################################
-# ########################## Enhance1 #############################
+# ######################### SeE Block #############################
 ###################################################################
-class Enhance1(nn.Module):
+class SeE_Block(nn.Module):
     def __init__(self, channel):
-        super(Enhance1, self).__init__()
+        super(SeE_Block, self).__init__()
         self.channel = channel
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
@@ -34,17 +33,16 @@ class Enhance1(nn.Module):
         fc2 = self.fc2(fc1)
         fc2 = self.sigmoid(fc2)
 
-        e = x * fc2
+        see = x * fc2
 
-        return e, fc2
-
+        return see
 
 ###################################################################
-# ########################## Enhance2 #############################
+# ######################### DCE Module ############################
 ###################################################################
-class Enhance2(nn.Module):
+class DCE_Module(nn.Module):
     def __init__(self, input_channels):
-        super(Enhance2, self).__init__()
+        super(DCE_Module, self).__init__()
         self.input_channels = input_channels
         self.concat_channels = int(input_channels * 2)
         self.channels_single = int(input_channels / 4)
@@ -153,10 +151,9 @@ class Enhance2(nn.Module):
 
         local_conv = self.local_conv(x)
 
-        e = self.fusion(torch.cat((p1, p2, p3, p4, local_conv), 1))
+        dce = self.fusion(torch.cat((p1, p2, p3, p4, local_conv), 1))
 
-        return e
-
+        return dce
 
 ###################################################################
 # ########################## NETWORK ##############################
@@ -176,18 +173,18 @@ class DCENet(nn.Module):
         self.layer3 = resnet50.layer3
         self.layer4 = resnet50.layer4
 
-        # ca
-        self.ca4 = Enhance1(2048)
-        self.ca3 = Enhance1(1024)
-        self.ca2 = Enhance1(512)
-        self.ca1 = Enhance1(256)
-        self.ca0 = Enhance1(64)
+        # semantic enhancement
+        self.see4 = SeE_Block(2048)
+        self.see3 = SeE_Block(1024)
+        self.see2 = SeE_Block(512)
+        self.see1 = SeE_Block(256)
+        self.see0 = SeE_Block(64)
 
-        # sa
-        self.sa4 = nn.Conv2d(2048, 1, 7, 1, 3)
-        self.sa3 = nn.Conv2d(1024, 1, 7, 1, 3)
-        self.sa2 = nn.Conv2d(512, 1, 7, 1, 3)
-        self.sa1 = nn.Conv2d(256, 1, 7, 1, 3)
+        # spatial enhancement
+        self.spe4 = nn.Conv2d(2048, 1, 7, 1, 3)
+        self.spe3 = nn.Conv2d(1024, 1, 7, 1, 3)
+        self.spe2 = nn.Conv2d(512, 1, 7, 1, 3)
+        self.spe1 = nn.Conv2d(256, 1, 7, 1, 3)
 
         # up
         self.up43 = nn.Sequential(nn.Conv2d(2048, 1024, 3, 1, 1), nn.BatchNorm2d(1024), nn.ReLU(), self.up)
@@ -201,12 +198,12 @@ class DCENet(nn.Module):
         self.cr21 = nn.Sequential(nn.Conv2d(512, 256, 1, 1, 0), nn.BatchNorm2d(256), nn.ReLU())
         self.cr10 = nn.Sequential(nn.Conv2d(128, 64, 1, 1, 0), nn.BatchNorm2d(64), nn.ReLU())
 
-        # ce
-        self.ce4 = Enhance2(2048)
-        self.ce3 = Enhance2(1024)
-        self.ce2 = Enhance2(512)
-        self.ce1 = Enhance2(256)
-        self.ce0 = Enhance2(64)
+        # dense context exploration
+        self.dce4 = DCE_Module(2048)
+        self.dce3 = DCE_Module(1024)
+        self.dce2 = DCE_Module(512)
+        self.dce1 = DCE_Module(256)
+        self.dce0 = DCE_Module(64)
 
         # predict
         self.predict0 = nn.Conv2d(64, 1, 3, 1, 1)
@@ -217,7 +214,6 @@ class DCENet(nn.Module):
 
     def forward(self, x):
         # x: [batch_size, channel=3, h, w]
-        # x_320 = F.upsample(x, size=(320, 320), mode='bilinear', align_corners=True)
 
         layer0 = self.layer0(x)  # [-1, 64, h/2, w/2]
         layer1 = self.layer1(layer0)  # [-1, 256, h/4, w/4]
@@ -226,41 +222,41 @@ class DCENet(nn.Module):
         layer4 = self.layer4(layer3)  # [-1, 2048, h/32, w/32]
 
         # 4     2048
-        ca4, ca4_map = self.ca4(layer4)
-        ce4 = self.ce4(ca4)
-        sa4_map = self.sigmoid(self.up(self.sa4(ce4)))
+        see4 = self.see4(layer4)
+        dce4 = self.dce4(see4)
+        spe4_map = self.sigmoid(self.up(self.spe4(dce4)))
 
         # 3     1024
-        ca3, ca3_map = self.ca3(layer3)
-        sa3 = sa4_map * ca3
-        up43 = self.up43(ce4)
-        cr43 = self.cr43(torch.cat((sa3, up43), 1))
-        ce3 = self.ce3(cr43)
-        sa3_map = self.sigmoid(self.up(self.sa3(ce3)))
+        see3 = self.see3(layer3)
+        spe3 = spe4_map * see3
+        up43 = self.up43(dce4)
+        cr43 = self.cr43(torch.cat((spe3, up43), 1))
+        dce3 = self.dce3(cr43)
+        spe3_map = self.sigmoid(self.up(self.spe3(dce3)))
 
         # 2     512
-        ca2, ca2_map = self.ca2(layer2)
-        sa2 = sa3_map * ca2
-        up32 = self.up32(ce3)
-        cr32 = self.cr32(torch.cat((sa2, up32), 1))
-        ce2 = self.ce2(cr32)
-        sa2_map = self.sigmoid(self.up(self.sa2(ce2)))
+        see2 = self.see2(layer2)
+        spe2 = spe3_map * see2
+        up32 = self.up32(dce3)
+        cr32 = self.cr32(torch.cat((spe2, up32), 1))
+        dce2 = self.dce2(cr32)
+        spe2_map = self.sigmoid(self.up(self.spe2(dce2)))
 
         # 1     256
-        ca1, ca1_map = self.ca1(layer1)
-        sa1 = sa2_map * ca1
-        up21 = self.up21(ce2)
-        cr21 = self.cr21(torch.cat((sa1, up21), 1))
-        ce1 = self.ce1(cr21)
-        sa1_map = self.sigmoid(self.up(self.sa1(ce1)))
+        see1 = self.see1(layer1)
+        spe1 = spe2_map * see1
+        up21 = self.up21(dce2)
+        cr21 = self.cr21(torch.cat((spe1, up21), 1))
+        dce1 = self.dce1(cr21)
+        spe1_map = self.sigmoid(self.up(self.spe1(dce1)))
 
         # 0     64
-        ca0, ca0_map = self.ca0(layer0)
-        sa0 = sa1_map * ca0
-        up10 = self.up10(ce1)
-        cr10 = self.cr10(torch.cat((sa0, up10), 1))
-        ce0 = self.ce0(cr10)
-        predict0 = self.predict0(ce0)
+        see0 = self.see0(layer0)
+        spe0 = spe1_map * see0
+        up10 = self.up10(dce1)
+        cr10 = self.cr10(torch.cat((spe0, up10), 1))
+        dce0 = self.dce0(cr10)
+        predict0 = self.predict0(dce0)
 
         # rescale to original size
         predict0 = F.upsample(predict0, size=x.size()[2:], mode='bilinear', align_corners=True)
